@@ -3,23 +3,18 @@ import time
 import asyncio
 import logging
 import traceback
-from typing import Dict, List, Optional, Callable, Any
+import inspect
+from typing import Dict, List, Optional, Callable, Any, Union
 
 import websockets
 import jwt
-
-try:
-    from Crypto.Cipher import AES
-    from Crypto.Util import Counter as CryptoCounter
-except ImportError:
-    pass
 
 logger = logging.getLogger(__name__)
 
 class ZelloClient:
     """
-    A Python SDK client for the Zello Channel WebSocket API.
-    Manages the WebSocket connection, authentication, and message handling.
+    A modern, asynchronous Python SDK for the Zello Channel WebSocket API.
+    Manages the WebSocket connection, authentication, and event handling.
     """
     def __init__(self, api_config: Dict[str, Any], loop: Optional[asyncio.AbstractEventLoop] = None):
         """
@@ -34,6 +29,7 @@ class ZelloClient:
         self.websocket: Optional[websockets.WebSocketClientProtocol] = None
         self.seq = 1
         self.is_connected = False
+        self._maintenance_task: Optional[asyncio.Task] = None
         
         # Parse channels
         initial_channels = self.api_config.get("zello_channels", [])
@@ -45,19 +41,40 @@ class ZelloClient:
         
         self.last_channel_status: Dict[str, Any] = {}
 
-        # Callbacks for event handling
-        self.on_connect: Optional[Callable[[], None]] = None
-        self.on_disconnect: Optional[Callable[[], None]] = None
-        self.on_error: Optional[Callable[[str], None]] = None
-        self.on_event: Optional[Callable[[Dict[str, Any]], None]] = None
-        self.on_audio_packet: Optional[Callable[[bytes], None]] = None
-        self.on_channel_status_update: Optional[Callable[[Dict[str, Any]], None]] = None
-        self.on_contacts_list: Optional[Callable[[Dict[str, Any]], None]] = None
+        # Event dispatcher registry
+        self._event_handlers: Dict[str, List[Callable]] = {}
+
+    def on(self, event_name: str):
+        """
+        Decorator to register an event handler.
+        
+        Example:
+            @client.on("on_text_message")
+            async def handle_message(data):
+                print(data["text"])
+        """
+        def decorator(func: Callable):
+            if event_name not in self._event_handlers:
+                self._event_handlers[event_name] = []
+            self._event_handlers[event_name].append(func)
+            return func
+        return decorator
+
+    async def _emit(self, event_name: str, *args, **kwargs):
+        """Dispatches an event to all registered handlers."""
+        if event_name in self._event_handlers:
+            for handler in self._event_handlers[event_name]:
+                try:
+                    if inspect.iscoroutinefunction(handler):
+                        await handler(*args, **kwargs)
+                    else:
+                        handler(*args, **kwargs)
+                except Exception as e:
+                    logger.error(f"Error in event handler '{event_name}': {e}")
+                    logger.debug(traceback.format_exc())
 
     def generate_auth_token(self) -> Optional[str]:
-        """
-        Generates the JWT for production or returns a static token for development.
-        """
+        """Generates the JWT for production or returns a static token for development."""
         if self.api_config.get("auth_mode") == "production":
             logger.info("Generating production JWT...")
             try:
@@ -65,32 +82,25 @@ class ZelloClient:
                 issuer = self.api_config.get("issuer")
 
                 if not private_key or not issuer:
-                    error_msg = "JWT generation failed: private_key or issuer missing from config."
-                    logger.critical(error_msg)
-                    if self.on_error:
-                        self.on_error(error_msg)
+                    logger.critical("JWT generation failed: private_key or issuer missing from config.")
                     return None
 
                 expiry = int(time.time()) + 3600
                 token = jwt.encode({'iss': issuer, 'exp': expiry}, private_key, algorithm='RS256')
-                logger.info("Production JWT generated successfully.")
-
-                if self.on_event:
-                    self.on_event({"command": "token_expiry_update", "expiry": expiry})
+                
+                # We can't await a sync method easily, so we rely on the loop for token updates later if needed.
                 return token
             except Exception as e:
-                error_msg = f"Could not generate production JWT: {e}"
-                logger.critical(f"{error_msg}\n{traceback.format_exc()}")
-                if self.on_error:
-                    self.on_error(error_msg)
+                logger.critical(f"Could not generate production JWT: {e}\n{traceback.format_exc()}")
                 return None
         else:
             logger.info("Using static development token or password.")
             return self.api_config.get("auth_token") or self.api_config.get("zello_password")
 
-    async def connect(self) -> None:
+    async def start(self) -> None:
         """
         Establishes and maintains the connection to Zello, with automatic reconnection.
+        Should run as a background task.
         """
         while True:
             try:
@@ -108,7 +118,7 @@ class ZelloClient:
                 ) as websocket:
                     self.websocket = websocket
                     self.is_connected = True
-                    logger.info("WebSocket connection established. Authenticating with Zello...")
+                    logger.info("WebSocket connection established. Authenticating...")
 
                     logon_payload = {
                         "command": "logon", 
@@ -126,14 +136,12 @@ class ZelloClient:
                     if not response.get("success"):
                         error_msg = f"Authentication failed: {response.get('error')}."
                         logger.critical(error_msg)
-                        if self.on_error: 
-                            self.on_error(error_msg)
+                        await self._emit("error", error_msg)
                         await asyncio.sleep(30)
                         continue
 
                     logger.info("Authentication successful.")
-                    if self.on_connect: 
-                        self.on_connect()
+                    await self._emit("connect")
                     
                     if self.target_channels:
                         logger.info(f"Subscribing to channels: {self.target_channels}")
@@ -147,13 +155,11 @@ class ZelloClient:
             except websockets.exceptions.ConnectionClosed as e:
                 logger.warning(f"Connection closed: {e}. Reconnecting in 10s...")
             except Exception as e:
-                logger.error(f"Unexpected connection error: {e}\n{traceback.format_exc()}")
-                if self.on_error: 
-                    self.on_error(str(e))
+                logger.error(f"Unexpected connection error: {e}")
+                await self._emit("error", str(e))
             finally:
                 self.is_connected = False
-                if self.on_disconnect: 
-                    self.on_disconnect()
+                await self._emit("disconnect")
                 await asyncio.sleep(10)
 
     async def _listen_for_messages(self) -> None:
@@ -165,31 +171,30 @@ class ZelloClient:
 
                 if isinstance(message, str):
                     msg_json = json.loads(message)
-                    logger.debug(f"Received JSON: {msg_json.get('command', 'N/A')}")
+                    command = msg_json.get("command", "unknown")
+                    logger.debug(f"Received JSON: {command}")
                     
-                    if msg_json.get("command") == "on_channel_status":
+                    # Update local state cache if applicable
+                    if command == "on_channel_status":
                         channel_name = msg_json.get("channel")
                         if channel_name:
                             self.last_channel_status[channel_name] = msg_json
-                        if self.on_channel_status_update:
-                            self.on_channel_status_update(msg_json)
-                    elif msg_json.get("command") == "on_users_list":
-                        if self.on_contacts_list:
-                            self.on_contacts_list(msg_json)
-                    elif self.on_event:
-                        self.on_event(msg_json)
+                            
+                    # Dispatch to strictly named handlers
+                    await self._emit(command, msg_json)
+                    # Dispatch a wildcard event
+                    await self._emit("any_event", msg_json)
 
                 elif isinstance(message, bytes):
-                    if self.on_audio_packet: 
-                        self.on_audio_packet(message)
+                    # Dispatch binary audio streams
+                    await self._emit("audio_packet", message)
 
             except websockets.exceptions.ConnectionClosed:
                 logger.warning("Listen loop detected connection closed.")
                 break
             except Exception as e:
                 logger.error(f"Error in message listener: {e}\n{traceback.format_exc()}")
-                if self.on_error: 
-                    self.on_error(f"Listener error: {e}")
+                await self._emit("error", str(e))
 
     async def send_json(self, data: Dict[str, Any]) -> None:
         """Sends a JSON payload to the WebSocket."""
@@ -202,7 +207,6 @@ class ZelloClient:
 
     async def get_contacts(self) -> None:
         """Requests the user's contact list from Zello."""
-        logger.info("Requesting contacts list...")
         await self.send_json({"command": "get_users_list"})
 
     async def disconnect(self) -> None:
@@ -212,6 +216,8 @@ class ZelloClient:
         if self.websocket:
             await self.websocket.close()
             self.websocket = None
+        if self._maintenance_task:
+            self._maintenance_task.cancel()
         logger.info("Disconnected.")
 
     async def send_text_message(self, text: str, channel: str) -> None:
@@ -223,24 +229,24 @@ class ZelloClient:
         """Sends a private text message to a user."""
         payload = {"command": "send_text_message", "for": username, "text": text}
         await self.send_json(payload)
-
-    async def update_channels(self, new_channel_list: List[str]) -> None:
-        """Updates the monitored channels by triggering a full reconnect."""
-        logger.info(f"Updating monitored channels to: {new_channel_list}")
-        self.target_channels = new_channel_list
-        self.last_channel_status = {}
-        if self.websocket and self.is_connected:
-            await self.disconnect()
-        else:
-            logger.info("Not currently connected. New channels will be used on next connection attempt.")
-            
+        
     async def set_status(self, status: str, channel: str) -> None:
         """Sets the user's status on a given channel."""
-        logger.info(f"Setting status to {status} on channel {channel}")
-        payload = {
-            "command": "set_channel_status",
-            "channel": channel,
-            "status": status
-        }
+        payload = {"command": "set_channel_status", "channel": channel, "status": status}
         await self.send_json(payload)
         await self.send_json({"command": "get_channel_status", "channel": channel})
+
+    # -----------------------------------------------------
+    # Async Context Manager Support (async with ZelloClient)
+    # -----------------------------------------------------
+    async def __aenter__(self):
+        self._maintenance_task = self.loop.create_task(self.start())
+        # Yield execution until connected (with timeout)
+        for _ in range(50):
+            if self.is_connected:
+                break
+            await asyncio.sleep(0.1)
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.disconnect()

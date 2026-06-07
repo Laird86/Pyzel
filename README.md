@@ -1,87 +1,100 @@
 # PyZello SDK
 
-A clean, robust, and asynchronous Python SDK for interacting with the **Zello Channel WebSocket API**.
+A modern, robust, and completely asynchronous Python SDK for interacting with the **Zello Channel WebSocket API**.
+
+[![Python Version](https://img.shields.io/badge/python-3.7%2B-blue)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## Features
 
-- **Asynchronous Design**: Built on top of `asyncio` and `websockets` for high-performance integrations.
-- **Robust Reconnection**: Contains continuous background loops that automatically recover from dropped connections.
-- **Production Ready**: Supports secure JSON Web Token (JWT) generating out-of-the-box using the Zello issuer and private key standard.
-- **Multiple Channels**: Easily listen to and interact with multiple Zello channels concurrently.
-- **Private & Channel Messaging**: Send text messages to channels or directly format private messages to individual users.
+- **Modern Developer Experience**: Employs elegant decorators (`@client.on`) similar to Discord.py or Flask.
+- **Asynchronous & Fast**: Built natively on `asyncio` and `websockets` for high-throughput, non-blocking audio and data streaming.
+- **Robust Reconnection**: Contains a resilient background loop that automatically recovers from dropped sockets or network interruptions.
+- **Production Ready Auth**: Built-in support for securely generating short-lived JSON Web Tokens (JWT) using Zello's issuer/private key standards.
+- **Context Manager Support**: Clean connection management using `async with ZelloClient(config) as client:`
 
 ## Installation
 
-You can install the SDK locally or build it for PyPI.
+You can install PyZello via PIP:
 
 ```bash
-# To install locally
+# To install from source locally:
 pip install -e .
 
-# Or, if published to PyPI later
+# Or, if published to PyPI later:
 # pip install pyzello
 ```
 
-## Quick Start
+## Quick Start: The "Echo Bot"
+
+Getting an interactive bot up and running takes less than 30 lines of code.
 
 ```python
 import asyncio
-import logging
 from pyzello import ZelloClient
 
-logging.basicConfig(level=logging.INFO)
+config = {
+    "auth_mode": "development",      # Use 'production' for JWT signing
+    "auth_token": "YOUR_DEV_TOKEN",
+    "zello_username": "YOUR_USERNAME",
+    "zello_channels": ["TestChannel"]
+}
 
-async def main():
-    # 1. Setup your configuration
-    config = {
-        "auth_mode": "production",
-        "issuer": "YOUR_ZELLO_ISSUER_ID",
-        "private_key": "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----",
-        "zello_channels": ["TestChannel1", "Intercom"]
-    }
+client = ZelloClient(api_config=config)
 
-    # 2. Initialize the client
-    client = ZelloClient(api_config=config)
+@client.on("connect")
+async def on_connect():
+    print("Bot is successfully connected to Zello!")
 
-    # 3. Register Event Callbacks
-    def on_connect():
-        print("Connected to Zello!")
-        
-    def on_message(event):
-        print(f"Received Zello Event: {event}")
+@client.on("on_text_message")
+async def handle_message(event):
+    channel = event.get("channel")
+    sender = event.get("from")
+    text = event.get("text", "")
 
-    client.on_connect = on_connect
-    client.on_event = on_message
+    # Prevent infinite echo loops
+    if sender == config["zello_username"]:
+        return
 
-    # 4. Connect to Zello (this runs in a loop reconnecting automatically)
-    # Run it concurrently if you want to perform other actions
-    asyncio.create_task(client.connect())
+    print(f"[{channel}] {sender}: {text}")
     
-    # Wait to ensure connection
-    await asyncio.sleep(5)
-    
-    # 5. Send a text message to a channel
-    await client.send_text_message("Hello from PyZello SDK!", "TestChannel1")
-    
-    # Keep application alive
-    while True:
-        await asyncio.sleep(1)
+    # Reply to the channel
+    await client.send_text_message(f"Echoing back: {text}", channel)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    # Start the robust reconnection loop and event dispatcher
+    asyncio.run(client.start())
 ```
 
-## Event Callbacks Available
+## Available Events
 
-You can map functions directly to the client to respond to specific events:
+The `@client.on("event_name")` decorator automatically maps Zello WebSocket commands to your functions. Common events include:
 
-- `on_connect()`: Triggered upon successful authentication.
-- `on_disconnect()`: Triggered when the WebSocket drops.
-- `on_error(message: str)`: Triggered via terminal errors.
-- `on_event(event_dict: dict)`: Receives general JSON commands from Zello.
-- `on_audio_packet(audio_bytes: bytes)`: Triggered continually when binary audio streams arrive.
-- `on_channel_status_update(status_dict: dict)`: Status changes over a specific channel.
-- `on_contacts_list(users_dict: dict)`: Delivers the contacts list.
+- `"connect"`: Triggered upon successful authentication with Zello.
+- `"disconnect"`: Triggered when the WebSocket drops.
+- `"error"`: Supplies string error messages when authentication or networking fails.
+- `"on_text_message"`: Received a text message.
+- `"on_channel_status"`: Notifies when user counts or statuses change.
+- `"on_users_list"`: Delivers the contact list state.
+- `"on_stream_start"`: Someone started transmitting audio.
+- `"audio_packet"`: Yields raw `bytes` for an active voice stream.
+- `"any_event"`: A wildcard trigger that passes the raw python dictionary of ANY JSON frame emitted.
+
+## Dealing with Audio
+
+To keep this SDK lightweight, audio decoding (e.g. `Opus` to `Wav` conversions) is intentionally *not* included. When someone broadcasts voice, PyZello emits `"audio_packet"` events containing raw binary network frames. You are free to route these raw bytes to an `opuslib` decoder or `FFmpeg` subprocess in your application.
+
+## Advanced Usage: Context Managers
+
+For script-based tools, you can use PyZello as an async context manager. This automatically starts the background connection task and cleans it up when the block exits.
+
+```python
+async def send_daily_alert():
+    async with ZelloClient(api_config=config) as client:
+        await client.send_text_message("Good morning, team!", "DailyStandup")
+        
+asyncio.run(send_daily_alert())
+```
 
 ## Publishing to PyPI (For Maintainers)
 
