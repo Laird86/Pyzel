@@ -144,7 +144,7 @@ class ZelloClient:
                         "auth_token": auth_token,
                         "username": self.api_config.get("zello_username"),
                         "password": self.api_config.get("zello_password"),
-                        "channels": []
+                        "channels": self.target_channels
                     }
                     await self.send_json(logon_payload)
 
