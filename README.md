@@ -1,5 +1,7 @@
 # PyZello SDK
 
+> **Disclaimer**: This is an unofficial community project and is NOT officially affiliated with, endorsed by, or maintained by Zello Inc.
+
 A modern, robust, and completely asynchronous Python SDK for interacting with the **Zello Channel WebSocket API**.
 
 [![Python Version](https://img.shields.io/badge/python-3.7%2B-blue)](https://www.python.org/)

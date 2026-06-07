@@ -6,12 +6,10 @@ with open("README.md", "r", encoding="utf-8") as fh:
 setup(
     name="pyzello",
     version="0.1.0",
-    author="Craig Laird",
-    author_email="craiglaird86@gmail.com",
     description="A Python SDK for the Zello Channel WebSocket API",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/Laird86/PyZello",
+    url="https://github.com/Laird86/Pyzel",
     packages=find_packages(),
     classifiers=[
         "Development Status :: 3 - Alpha",
