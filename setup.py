@@ -27,7 +27,6 @@ setup(
     python_requires=">=3.7",
     install_requires=[
         "websockets>=10.0",
-        "PyJWT>=2.0.0",
-        "pycryptodome>=3.15.0"
+        "PyJWT[crypto]>=2.0.0"
     ],
 )
