@@ -1,4 +1,4 @@
-# PyZello SDK
+# Pyzel SDK
 
 > **Disclaimer**: This is an unofficial community project and is NOT officially affiliated with, endorsed by, or maintained by Zello Inc.
 
@@ -17,14 +17,14 @@ A modern, robust, and completely asynchronous Python SDK for interacting with th
 
 ## Installation
 
-You can install PyZello via PIP:
+You can install Pyzel via PIP:
 
 ```bash
 # To install from source locally:
 pip install -e .
 
 # Or, if published to PyPI later:
-# pip install pyzello
+# pip install pyzel
 ```
 
 ## Quick Start: The "Echo Bot"
@@ -33,7 +33,7 @@ Getting an interactive bot up and running takes less than 30 lines of code.
 
 ```python
 import asyncio
-from pyzello import ZelloClient
+from pyzel import ZelloClient
 
 config = {
     "auth_mode": "development",      # Use 'production' for JWT signing
@@ -84,11 +84,11 @@ The `@client.on("event_name")` decorator automatically maps Zello WebSocket comm
 
 ## Dealing with Audio
 
-To keep this SDK lightweight, audio decoding (e.g. `Opus` to `Wav` conversions) is intentionally *not* included. When someone broadcasts voice, PyZello emits `"audio_packet"` events containing raw binary network frames. You are free to route these raw bytes to an `opuslib` decoder or `FFmpeg` subprocess in your application.
+To keep this SDK lightweight, audio decoding (e.g. `Opus` to `Wav` conversions) is intentionally *not* included. When someone broadcasts voice, Pyzel emits `"audio_packet"` events containing raw binary network frames. You are free to route these raw bytes to an `opuslib` decoder or `FFmpeg` subprocess in your application.
 
 ## Advanced Usage: Context Managers
 
-For script-based tools, you can use PyZello as an async context manager. This automatically starts the background connection task and cleans it up when the block exits.
+For script-based tools, you can use Pyzel as an async context manager. This automatically starts the background connection task and cleans it up when the block exits.
 
 ```python
 async def send_daily_alert():

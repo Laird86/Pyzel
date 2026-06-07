@@ -1,5 +1,5 @@
 import pytest
-from pyzello.client import ZelloClient
+from pyzel.client import ZelloClient
 
 def test_client_initialization():
     config = {

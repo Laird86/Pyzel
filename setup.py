@@ -4,7 +4,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 setup(
-    name="pyzello",
+    name="pyzel",
     version="0.1.0",
     description="A Python SDK for the Zello Channel WebSocket API",
     long_description=long_description,

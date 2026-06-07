@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from pyzello import ZelloClient
+from pyzel import ZelloClient
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
