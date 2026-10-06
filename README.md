@@ -135,9 +135,13 @@ python -m twine check dist/*
 
 CI tests supported Python versions and validates that source and wheel distributions build cleanly.
 
-## Relationship to Zellomon
+## Related project: Zellomon
 
-Pyzel is the reusable Channel API client layer. Zellomon is a separate Zello operations, monitoring, compliance, alerting, transcription, and intelligence product. Keeping the library separate allows the client to remain small and reusable without exposing or destabilising Zellomon production configuration.
+Pyzel is a standalone Python client for the Zello Channel API. It is also used as a reusable integration layer alongside **Zellomon**, a separate Zello operations, monitoring, compliance, alerting, transcription, and intelligence platform developed by ZBots.
+
+Learn more about ZBots and Zellomon at https://zbots.co.uk.
+
+For Pyzel questions, integration discussions, or commercial enquiries, contact **bruce@zbots.co.uk**.
 
 ## Trademark note
 
