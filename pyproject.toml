@@ -7,7 +7,7 @@ license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.10"
 authors = [
-  { name = "Craig Laird" }
+  { name = "Craig Laird", email = "bruce@zbots.co.uk" }
 ]
 keywords = ["zello", "push-to-talk", "ptt", "websocket", "channel-api"]
 classifiers = [
@@ -38,6 +38,7 @@ production-auth = [
 
 [project.urls]
 Homepage = "https://github.com/Laird86/Pyzel"
+Website = "https://zbots.co.uk"
 Repository = "https://github.com/Laird86/Pyzel"
 Issues = "https://github.com/Laird86/Pyzel/issues"
 "Zello Channel API" = "https://github.com/zelloptt/zello-channel-api"
