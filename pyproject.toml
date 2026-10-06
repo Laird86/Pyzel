@@ -1,0 +1,50 @@
+[project]
+name = "pyzel"
+version = "0.1.0"
+description = "Async Python client for the Zello Channel API"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
+authors = [
+  { name = "Craig Laird" }
+]
+keywords = ["zello", "push-to-talk", "ptt", "websocket", "channel-api"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Communications",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+  "websockets>=12,<16",
+]
+
+[project.optional-dependencies]
+dev = [
+  "build>=1.2",
+  "pytest>=8",
+  "pytest-asyncio>=0.23",
+  "twine>=5",
+]
+production-auth = [
+  "PyJWT>=2.8",
+  "cryptography>=42",
+]
+
+[project.urls]
+Homepage = "https://github.com/Laird86/Pyzel"
+Repository = "https://github.com/Laird86/Pyzel"
+Issues = "https://github.com/Laird86/Pyzel/issues"
+"Zello Channel API" = "https://github.com/zelloptt/zello-channel-api"
+
+[build-system]
+requires = ["setuptools>=77.0.3"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["pyzel*"]
