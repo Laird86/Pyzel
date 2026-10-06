@@ -1,105 +1,144 @@
-# Pyzel SDK
+# Pyzel
 
-> **Disclaimer**: This is an unofficial community project and is NOT officially affiliated with, endorsed by, or maintained by Zello Inc.
+> **Release candidate / unofficial project.** Pyzel is independently developed and is not endorsed by, affiliated with, or maintained by Zello. The Zello name is used only to identify the API and services this library interoperates with.
 
-A modern, robust, and completely asynchronous Python SDK for interacting with the **Zello Channel WebSocket API**.
+Async Python client for the public Zello Channel API.
 
-[![Python Version](https://img.shields.io/badge/python-3.7%2B-blue)](https://www.python.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+The package is intentionally small. It provides WebSocket connection handling, logon payload helpers, text-message support, event callbacks, refresh-token support, and optional server-side JWT generation helpers.
 
-## Features
+## Status
 
-- **Modern Developer Experience**: Employs elegant decorators (`@client.on`) similar to Discord.py or Flask.
-- **Asynchronous & Fast**: Built natively on `asyncio` and `websockets` for high-throughput, non-blocking audio and data streaming.
-- **Robust Reconnection**: Contains a resilient background loop that automatically recovers from dropped sockets or network interruptions.
-- **Production Ready Auth**: Built-in support for securely generating short-lived JSON Web Tokens (JWT) using Zello's issuer/private key standards.
-- **Context Manager Support**: Clean connection management using `async with ZelloClient(config) as client:`
+Alpha. The package API may change before 1.0.
+
+This repository is kept separate from Zellomon. Publishing or changing this package must not require changes to Zellomon's production authentication path.
+
+## Supported API targets
+
+The upstream Channel API documents three endpoints:
+
+- Zello Friends & Family: `wss://zello.io/ws`
+- Zello Work: `wss://zellowork.io/ws/<network name>`
+- Zello Enterprise Server: `wss://<server domain>/ws/mesh`
+
+Friends & Family requires an API auth token or refresh token. Named users also provide username/password. Zello Work uses username/password and should omit the Friends & Family auth token.
+
+See the upstream specification: https://github.com/zelloptt/zello-channel-api
 
 ## Installation
 
-You can install Pyzel via PIP:
+For local development:
 
 ```bash
-# To install from source locally:
-pip install -e .
-
-# Or, if published to PyPI later:
-# pip install pyzel
+python -m pip install -e ".[dev]"
 ```
 
-## Quick Start: The "Echo Bot"
+For optional server-side JWT helpers:
 
-Getting an interactive bot up and running takes less than 30 lines of code.
+```bash
+python -m pip install -e ".[production-auth]"
+```
+
+A public PyPI install command should only be added after the distribution has actually been published.
+
+## Quick start — Zello Work
 
 ```python
 import asyncio
-from pyzel import ZelloClient
+from pyzel import ZelloClient, sanitize_for_log
 
-config = {
-    "auth_mode": "development",      # Use 'production' for JWT signing
-    "auth_token": "YOUR_DEV_TOKEN",
-    "zello_username": "YOUR_USERNAME",
-    "zello_channels": ["TestChannel"]
-}
+async def main():
+    client = ZelloClient(
+        username="operator",
+        password="secret",
+        endpoint="wss://zellowork.io/ws/example-network",
+    )
 
-client = ZelloClient(api_config=config)
+    try:
+        await client.connect(open_socket=True)
+        await client.join_channel("Operations")
+        first_event = await client.receive()
+        print(sanitize_for_log(first_event))
+    finally:
+        await client.disconnect()
 
-@client.on("connect")
-async def on_connect():
-    print("Bot is successfully connected to Zello!")
-
-@client.on("on_text_message")
-async def handle_message(event):
-    channel = event.get("channel")
-    sender = event.get("from")
-    text = event.get("text", "")
-
-    # Prevent infinite echo loops
-    if sender == config["zello_username"]:
-        return
-
-    print(f"[{channel}] {sender}: {text}")
-    
-    # Reply to the channel
-    await client.send_text_message(f"Echoing back: {text}", channel)
-
-if __name__ == "__main__":
-    # Start the robust reconnection loop and event dispatcher
-    asyncio.run(client.start())
+asyncio.run(main())
 ```
 
-## Available Events
+## Quick start — Friends & Family
 
-The `@client.on("event_name")` decorator automatically maps Zello WebSocket commands to your functions. Common events include:
-
-- `"connect"`: Triggered upon successful authentication with Zello.
-- `"disconnect"`: Triggered when the WebSocket drops.
-- `"error"`: Supplies string error messages when authentication or networking fails.
-- `"on_text_message"`: Received a text message.
-- `"on_channel_status"`: Notifies when user counts or statuses change.
-- `"on_users_list"`: Delivers the contact list state.
-- `"on_stream_start"`: Someone started transmitting audio.
-- `"audio_packet"`: Yields raw `bytes` for an active voice stream.
-- `"any_event"`: A wildcard trigger that passes the raw python dictionary of ANY JSON frame emitted.
-
-## Dealing with Audio
-
-To keep this SDK lightweight, audio decoding (e.g. `Opus` to `Wav` conversions) is intentionally *not* included. When someone broadcasts voice, Pyzel emits `"audio_packet"` events containing raw binary network frames. You are free to route these raw bytes to an `opuslib` decoder or `FFmpeg` subprocess in your application.
-
-## Advanced Usage: Context Managers
-
-For script-based tools, you can use Pyzel as an async context manager. This automatically starts the background connection task and cleans it up when the block exits.
+Use a development token from the Zello developer portal or a short-lived production token issued by your own backend. Never embed a private signing key in a distributed application.
 
 ```python
-async def send_daily_alert():
-    async with ZelloClient(api_config=config) as client:
-        await client.send_text_message("Good morning, team!", "DailyStandup")
-        
-asyncio.run(send_daily_alert())
+import asyncio
+from pyzel import ZelloClient, sanitize_for_log
+
+async def main():
+    client = ZelloClient(
+        username="example-user",
+        password="secret",
+        auth_token="short-lived-token",
+    )
+
+    try:
+        await client.connect(open_socket=True)
+        await client.join_channel("ExampleChannel")
+        response = await client.receive()
+        print(sanitize_for_log(response))
+    finally:
+        await client.disconnect()
+
+asyncio.run(main())
 ```
 
-## Publishing to PyPI (For Maintainers)
+## Safe logging
 
-1. Make sure you have `twine` installed: `pip install twine wheel setuptools`
-2. Build the distribution: `python setup.py sdist bdist_wheel`
-3. Upload to PyPI: `twine upload dist/*`
+A successful Friends & Family logon can return a refresh token. Do not print raw authentication responses.
+
+```python
+from pyzel import sanitize_for_log
+
+print(sanitize_for_log(response))
+```
+
+The bundled live examples use the same recursive redaction helper.
+
+## Live smoke test
+
+Live tests are intentionally opt-in and should use local environment variables, never committed credentials.
+
+```bash
+export PYZEL_LIVE_TEST=1
+export ZELLO_CHANNEL=ExampleChannel
+export ZELLO_USERNAME=example-user
+export ZELLO_PASSWORD='...'
+export ZELLO_AUTH_TOKEN='...'
+python examples/live_connect.py
+```
+
+For Zello Work, set `ZELLO_ENDPOINT` to your network-specific endpoint and omit `ZELLO_AUTH_TOKEN`.
+
+## Security
+
+- Never commit passwords, auth tokens, refresh tokens, API keys, JWT signing keys, or private keys.
+- Zello's upstream authentication documentation says production JWT signing keys belong on a trusted server, not inside a client application.
+- `.env`, PEM files, key files, and common certificate/key formats are ignored by Git.
+- Live examples require `PYZEL_LIVE_TEST=1` so CI cannot accidentally authenticate to a real account.
+
+## Development
+
+```bash
+python -m pip install -e ".[dev]"
+python -m pytest -q
+python -m build
+python -m twine check dist/*
+```
+
+CI tests supported Python versions and validates that source and wheel distributions build cleanly.
+
+## Relationship to Zellomon
+
+Pyzel is the reusable Channel API client layer. Zellomon is a separate Zello operations, monitoring, compliance, alerting, transcription, and intelligence product. Keeping the library separate allows the client to remain small and reusable without exposing or destabilising Zellomon production configuration.
+
+## Trademark note
+
+Zello is a trademark of Zello Inc. This project must not imply official status or endorsement. Pyzel is the project and distribution name. Zello is referenced only to describe compatibility with the Zello Channel API; no endorsement or affiliation is implied.
